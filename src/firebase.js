@@ -1,7 +1,8 @@
-// Import the functions you need from the SDKs you need
+// Import the functions you need from the SDKs
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore"; // 👈 Add this
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -18,9 +19,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 
-// ✅ Add these two lines:
+// ✅ Set up auth and firestore
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
+const db = getFirestore(app); // 👈 Initialize Firestore
 
-// ✅ Export them:
-export { auth, provider };
+// ✅ Export all you need
+export { auth, provider, db };
