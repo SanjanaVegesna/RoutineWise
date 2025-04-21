@@ -259,6 +259,7 @@ const Profile = () => {
       
       // Update Firestore
       await updateDoc(userDocRef, {
+        displayName: profile.displayName,
         preferredName: profile.preferredName,
         gender: profile.gender,
         dateOfBirth: profile.dateOfBirth,
@@ -271,6 +272,7 @@ const Profile = () => {
       // Only now update local state
       setProfile(prev => ({
         ...prev,
+        displayName: profile.displayName,
         preferredName: profile.preferredName,
         gender: profile.gender,
         dateOfBirth: profile.dateOfBirth,
@@ -352,7 +354,7 @@ const Profile = () => {
         {/* User Info */}
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow p-6 space-y-4">
           <div className="flex justify-between items-center border-b pb-2">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Account Info</h2>
+            <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Personal Info</h2>
             {!isEditing ? (
               <button
                 onClick={() => setIsEditing(true)}
@@ -385,18 +387,19 @@ const Profile = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                  Name
               </label>
-              <p className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-800 dark:text-white">
-                {profile.displayName}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email (Read Only)
-              </label>
-              <p className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-800 dark:text-white">
-                {profile.email}
-              </p>
+              {isEditing ? (
+                <input
+                  type="text"
+                  name="displayName"
+                  value={profile.displayName}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                />
+              ) : (
+                <p className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-800 dark:text-white">
+                  {profile.displayName}
+                </p>
+              )}
             </div>
 
             <div>
@@ -417,6 +420,17 @@ const Profile = () => {
                 </p>
               )}
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Email
+              </label>
+              <p className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-800 dark:text-white">
+                {profile.email}
+              </p>
+            </div>
+
+           
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
