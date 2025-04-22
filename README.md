@@ -4,3 +4,7 @@ RoutineWise is a smart, voice-enabled, and emotionally aware planner designed fo
 
 RoutineWise does not rely on external datasets. Instead, we leverage Google's Vertex AI with prompt-based logic and adapt using real-time user feedback. Over time, our app passively learns user behavior — average task durations, peak focus hours, and preferred planning styles — and feeds that back into future plans.
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> Deepika
