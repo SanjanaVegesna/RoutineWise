@@ -307,7 +307,7 @@ import MainWrapper from "../../context/MainWrapper";
 import PlanVariants from "./PlanVariants";
 
 import { auth, db } from "../../firebase";
-import {
+import { 
   collection,
   query,
   where,
@@ -317,10 +317,12 @@ import {
   deleteDoc,
   doc,
   updateDoc,
-  addDoc
+  addDoc,
+  getDoc  // Added this import
 } from "firebase/firestore";
 
 import { getUserPlan, getPlanVariants } from "../../services/firestoreService";
+import PlanTask from "./PlanTask"; // Import the new planTask component
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -330,11 +332,21 @@ function Dashboard() {
   const [showNightPrompt, setShowNightPrompt] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [showVariants, setShowVariants] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(true);
+  const [showplanTask, setShowplanTask] = useState(false);
+  const [showVariantsCard, setShowVariantsCard] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setUserReady(true);
+        
+        // Check if user is new (no plans created yet)
+        const userRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userRef);
+        const isFirstTime = !userDoc.exists() || !userDoc.data()?.hasCreatedPlan;
+        setIsNewUser(isFirstTime);
+        
         await loadPlan(user.uid);
         await fetchCompletions(user.uid);
       }
@@ -347,7 +359,10 @@ function Dashboard() {
     const planData = await getUserPlan(userId, dateKey);
     const fallbackVariants = await getPlanVariants(userId, dateKey);
   
-    setVariants(fallbackVariants); // ✅ Always store fallback variants
+    if (fallbackVariants && fallbackVariants.length > 0) {
+      setVariants(fallbackVariants);
+      setIsNewUser(false);
+    }
   
     if (Array.isArray(planData?.plan) && planData.plan.length > 0) {
       setSelectedVariant(planData.selectedVariant || null);
@@ -360,10 +375,12 @@ function Dashboard() {
           completed: false,
         }))
       );
-      setShowVariants(false); // ✅ No need to show variants initially
+      setShowVariants(false);
+      setShowVariantsCard(false); // Hide the variants card when plan is loaded
+      setIsNewUser(false);
     } else {
-      setAnalytics([]); // No plan available yet
-      setShowVariants(true); // ✅ Show PlanVariants selector by default
+      setAnalytics([]);
+      setShowVariants(false);
     }
   };
   
@@ -475,15 +492,17 @@ function Dashboard() {
     return () => clearInterval(interval);
   }, [showNightPrompt]);
 
+  
+
   const totalTasks = analytics.length;
   const completedTasks = analytics.filter((task) => task.completed).length;
   const pendingTasks = totalTasks - completedTasks;
   const upcomingTask = analytics.find((task) => !task.completed);
-  const allCompleted = completedTasks === totalTasks;
+  const allCompleted = completedTasks === totalTasks && totalTasks > 0;
 
   let achievementText = "Great Going";
   let achievementColor = "text-green-600";
-  const completionRate = completedTasks / totalTasks;
+  const completionRate = totalTasks > 0 ? completedTasks / totalTasks : 0;
 
   if (completionRate < 0.7 && completionRate >= 0.4) {
     achievementText = "You can do better";
@@ -501,10 +520,45 @@ function Dashboard() {
     );
   }
 
+  const handlePlanCreated = async (plan) => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) return;
+    
+    // Mark user as not new
+    setIsNewUser(false);
+    
+    // Refresh the plan data
+    await loadPlan(userId);
+    await fetchCompletions(userId);
+  };
+  
+
   return (
     <MainWrapper>
-      {allCompleted && <Confetti recycle={false} numberOfPieces={400} />}
+      {/* Only show confetti if user has tasks and all are completed */}
+      {!isNewUser && allCompleted && <Confetti recycle={false} numberOfPieces={400} />}
+      
       <main className="p-4 sm:p-6 md:p-8 space-y-8 max-w-6xl mx-auto text-gray-800">
+        {/* Welcome message for new users */}
+        {isNewUser && analytics.length === 0 && (
+          <motion.div
+            className="bg-gradient-to-r from-blue-100 via-indigo-100 to-purple-100 rounded-2xl shadow-lg p-8 text-center"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <h2 className="text-2xl font-bold mb-4">👋 Welcome to RoutineWise!</h2>
+            <p className="text-lg mb-6">Hi there! What's your plan for today? Let's break it down together and make your day more productive.</p>
+            <button
+              onClick={() => setShowplanTask(true)}
+              className="px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-md text-lg font-medium"
+            >
+              ✏️ Make Your First Plan
+            </button>
+          </motion.div>
+        )}
+
+        {/* Keep your existing Task Summary section */}
         <motion.div
           className="bg-gradient-to-r from-indigo-100 via-purple-100 to-pink-100 rounded-2xl shadow-lg p-6"
           initial={{ opacity: 0, y: -20 }}
@@ -532,24 +586,24 @@ function Dashboard() {
                 🧠 Current Plan: <span className="underline">{selectedVariant}</span>
               </div>
             )}
-
           </div>
         </motion.div>
 
-        {console.log('har', variants)}
-
+        {/* Only show Plan Variants if user has plans */}
+        {!isNewUser && variants.length > 0 && showVariantsCard && (
         <PlanVariants
           variants={variants}
           onVariantSelected={async () => {
             const userId = auth.currentUser?.uid;
             setShowVariants(false);
-            await loadPlan(userId);          // refresh plan
-            await fetchCompletions(userId);  // refresh completion status
-            setVariants([]);                 // ✅ hide "Change Plan" button
+            setShowVariantsCard(false); // Hide card after selection
+            await loadPlan(userId);
+            await fetchCompletions(userId);
           }}
         />
+      )}
 
-
+        {/* Keep your existing task list section */}
         {analytics.length > 0 && (
           <motion.div
             className="bg-white rounded-2xl shadow-lg p-6 h-[55vh] overflow-y-auto border-t-4 border-indigo-200"
@@ -572,8 +626,9 @@ function Dashboard() {
               <motion.div
                 key={task.id}
                 whileHover={{ scale: 1.01 }}
-                className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
-                  }`}
+                className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${
+                  task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <button
@@ -594,22 +649,43 @@ function Dashboard() {
                 <span className="text-sm text-gray-500 font-medium">{task.time}</span>
               </motion.div>
             ))}
-
           </motion.div>
         )}
 
-        {/* 🔁 Add it here */ console.log('ramssss', variants)}
-        {(
+        {/* Only show Change Plan button if user has variants */}
+        {!isNewUser && variants.length > 0 && (
+        <div className="text-center mt-6">
+          <button
+            onClick={() => {
+              setShowVariantsCard(true); // Show the variants card when Change Plan is clicked
+              setShowVariants(true);
+            }}
+            className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white shadow-md"
+          >
+            🔁 Change Plan
+          </button>
+          <button
+            onClick={() => setShowplanTask(true)}
+            className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md ml-4"
+          >
+            ✏️ Create New Plan
+          </button>
+        </div>
+      )}
+
+        {/* Create New Plan button for users with no plan variants */}
+        {!isNewUser && variants.length === 0 && (
           <div className="text-center mt-6">
             <button
-              onClick={() => setShowVariants(true)}
-              className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white shadow-md"
+              onClick={() => setShowplanTask(true)}
+              className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
             >
-              🔁 Change Plan
+              ✏️ Create New Plan
             </button>
           </div>
         )}
 
+        {/* Keep your existing night prompt */}
         {showNightPrompt && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -619,24 +695,34 @@ function Dashboard() {
             🌙 It's almost the end of the day!{" "}
             <button
               className="underline font-semibold hover:text-yellow-900"
-              onClick={() => navigate("/make-plan")}
+              onClick={() => setShowplanTask(true)}
             >
               Plan for tomorrow
             </button>
           </motion.div>
         )}
 
-        <motion.div
-          className="bg-white rounded-2xl shadow-md p-5 border-l-4 border-blue-200"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-        >
-          <h2 className="text-xl font-bold">📅 Weekly Achievement</h2>
-          <p className={`text-lg font-medium ${achievementColor}`}>
-            {achievementText}
-          </p>
-        </motion.div>
+        {/* Only show Weekly Achievement if user is not new */}
+        {!isNewUser && (
+          <motion.div
+            className="bg-white rounded-2xl shadow-md p-5 border-l-4 border-blue-200"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+          >
+            <h2 className="text-xl font-bold">📅 Daily Achievement</h2>
+            <p className={`text-lg font-medium ${achievementColor}`}>
+              {achievementText}
+            </p>
+          </motion.div>
+        )}
+        
+        {/* Add the PlanTask component */}
+        <PlanTask 
+          isOpen={showplanTask} 
+          onClose={() => setShowplanTask(false)}
+          onPlanCreated={handlePlanCreated}
+        />
       </main>
     </MainWrapper>
   );

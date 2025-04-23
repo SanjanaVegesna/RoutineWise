@@ -63,18 +63,7 @@ const Navbar = () => {
         >
           Home
         </NavLink>
-        <NavLink
-          to="/make-plan"
-          className={({ isActive }) =>
-            `px-3 py-2 rounded-md transition ${
-              isActive
-                ? "text-white bg-gray-300 dark:bg-gray-700"
-                : "hover:bg-gray-200 dark:hover:bg-gray-700"
-            }`
-          }
-        >
-          Make a Plan
-        </NavLink>
+        
 
         {/* Dark Mode Toggle */}
         <button
