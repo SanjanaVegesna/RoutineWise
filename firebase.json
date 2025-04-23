@@ -1,0 +1,21 @@
+{
+  "hosting": {
+    "public": "frontend/build",
+    "rewrites": [
+      {
+        "source": "/generateDailyPlan",
+        "function": "generateDailyPlan"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "backend",
+      "codebase": "default"
+    }
+  ]
+}
