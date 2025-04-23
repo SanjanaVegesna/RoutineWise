@@ -14,8 +14,6 @@ const RequireAuth = ({ children }) => {
       if (currentUser) {
         setUser(currentUser);
 
-        console.log(currentUser.uid);
-
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
 

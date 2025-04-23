@@ -7,7 +7,6 @@ const { scheduleDay } = require('./scheduler');
 
 
 async function generateDailyPlan(req, res, db, apiKey, model) {
-  console.log(apiKey)
   const ai = new GoogleGenAI({ apiKey }); // ✅ use injected secret
   try {
     if (req.method !== 'POST') {
@@ -25,37 +24,44 @@ async function generateDailyPlan(req, res, db, apiKey, model) {
 
     if (typeof profileData !== 'object') profileData = {};
 
-    profileData.avg_task_times = profileData.avg_task_times || {};
-    profileData.best_focus_times = Array.isArray(profileData.best_focus_times)
-      ? profileData.best_focus_times.filter(t => typeof t === 'string' && t.trim() !== '')
-      : [];
 
+    const avgTimes = profileData.avg_task_times || {};
+    const bestFocusTimes = Array.isArray(profileData.best_focus_times)
+      ? profileData.best_focus_times.filter(t => typeof t === 'string' && t.trim())
+      : [];
 
     // Step B: Parse freeform goals
     let goals = Array.isArray(rawGoals)
       ? rawGoals
       : await parseFreeformGoals(ai, model, rawGoals);
 
-    // Step C: Build durations
-    const avgTimes = profileData.avg_task_times || {};
+    
+
     const durations = {};
-    goals.forEach(g => {
-      if (avgTimes[g] != null) durations[g] = avgTimes[g];
+    goals.forEach((g) => {
+      if (avgTimes[g] != null) {
+        durations[g] = avgTimes[g];
+      }
     });
-    const missing = goals.filter(g => durations[g] == null);
-    if (missing.length) {
-      const est = await estimateDurations(ai, model, missing);
-      missing.forEach(g => {
+
+    const missing = goals.filter((g) => durations[g] == null);
+
+    if (missing.length > 0) {
+      const est = await estimateDurations(ai, model, missing, avgTimes);
+      missing.forEach((g) => {
         durations[g] = est[g] || 30;
       });
     }
 
+
     const rankedNames = await rankTasksByAI(ai, model, goals);
+
 
     const annotatedGoals = rankedNames.map(name => ({
       name,
       duration: durations[name] || 30
     }));
+
 
     const dateKey = new Date().toISOString().split('T')[0];
     const planCollection = db.collection('plans').doc(userId).collection(dateKey);
@@ -74,8 +80,9 @@ async function generateDailyPlan(req, res, db, apiKey, model) {
         goals: annotatedGoals,
         exceptions,
         startOfDay: checkin.startOfDay || '09:00',
-        focusWindows: profileData.best_focus_times || []
+        focusWindows: bestFocusTimes || []
       });
+
 
       await planCollection.doc('plan').set({
         createdAt: new Date().toISOString(),
@@ -140,14 +147,15 @@ async function generateDailyPlan(req, res, db, apiKey, model) {
       plan: null,
       variants: variantsToReturn,
       usedProfile: {
-        avg_task_times: Object.keys(profileData.avg_task_times).length > 0,
-        focus_windows: profileData.best_focus_times.length > 0
+        avg_task_times: Object.keys(avgTimes).length > 0,
+        focus_windows: bestFocusTimes.length > 0
       }
     });
+
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message });
   }
 };
 
-module.exports ={generateDailyPlan}
+module.exports = { generateDailyPlan }
