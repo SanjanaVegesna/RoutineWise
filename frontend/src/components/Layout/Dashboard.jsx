@@ -334,7 +334,6 @@ function Dashboard() {
   const [showVariants, setShowVariants] = useState(false);
   const [isNewUser, setIsNewUser] = useState(true);
   const [showplanTask, setShowplanTask] = useState(false);
-  const [showVariantsCard, setShowVariantsCard] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -359,10 +358,7 @@ function Dashboard() {
     const planData = await getUserPlan(userId, dateKey);
     const fallbackVariants = await getPlanVariants(userId, dateKey);
   
-    if (fallbackVariants && fallbackVariants.length > 0) {
-      setVariants(fallbackVariants);
-      setIsNewUser(false);
-    }
+    setVariants(fallbackVariants); // ✅ Always store fallback variants
   
     if (Array.isArray(planData?.plan) && planData.plan.length > 0) {
       setSelectedVariant(planData.selectedVariant || null);
@@ -375,12 +371,10 @@ function Dashboard() {
           completed: false,
         }))
       );
-      setShowVariants(false);
-      setShowVariantsCard(false); // Hide the variants card when plan is loaded
-      setIsNewUser(false);
+      setShowVariants(false); // ✅ No need to show variants initially
     } else {
-      setAnalytics([]);
-      setShowVariants(false);
+      setAnalytics([]); // No plan available yet
+      setShowVariants(true); // ✅ Show PlanVariants selector by default
     }
   };
   
@@ -590,18 +584,18 @@ function Dashboard() {
         </motion.div>
 
         {/* Only show Plan Variants if user has plans */}
-        {!isNewUser && variants.length > 0 && showVariantsCard && (
-        <PlanVariants
-          variants={variants}
-          onVariantSelected={async () => {
-            const userId = auth.currentUser?.uid;
-            setShowVariants(false);
-            setShowVariantsCard(false); // Hide card after selection
-            await loadPlan(userId);
-            await fetchCompletions(userId);
-          }}
-        />
-      )}
+        {!isNewUser && variants.length > 0 && (
+          <PlanVariants
+            variants={variants}
+            onVariantSelected={async () => {
+              const userId = auth.currentUser?.uid;
+              setShowVariants(false);
+              await loadPlan(userId);
+              await fetchCompletions(userId);
+              setVariants([]);
+            }}
+          />
+        )}
 
         {/* Keep your existing task list section */}
         {analytics.length > 0 && (
@@ -654,24 +648,22 @@ function Dashboard() {
 
         {/* Only show Change Plan button if user has variants */}
         {!isNewUser && variants.length > 0 && (
-        <div className="text-center mt-6">
-          <button
-            onClick={() => {
-              setShowVariantsCard(true); // Show the variants card when Change Plan is clicked
-              setShowVariants(true);
-            }}
-            className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white shadow-md"
-          >
-            🔁 Change Plan
-          </button>
-          <button
-            onClick={() => setShowplanTask(true)}
-            className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md ml-4"
-          >
-            ✏️ Create New Plan
-          </button>
-        </div>
-      )}
+          <div className="text-center mt-6">
+            <button
+              onClick={() => setShowVariants(true)}
+              className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white shadow-md mr-4"
+            >
+              🔁 Change Plan
+            </button>
+            
+            <button
+              onClick={() => setShowplanTask(true)}
+              className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
+            >
+              ✏️ Create New Plan
+            </button>
+          </div>
+        )}
 
         {/* Create New Plan button for users with no plan variants */}
         {!isNewUser && variants.length === 0 && (
