@@ -1,33 +1,46 @@
-// backend/promptBuilder.js
-module.exports = function buildPrompt({ goals, checkin, profileData }) {
-  const durations = profileData?.avg_task_times || {};
-  const exList    = (checkin.exceptions || []).join('; ');
+// promptBuilder.js
+const { stripFences } = require("../utils");
 
-  return `
-You’re a strict scheduler. Produce ONLY a JSON array of objects; no narrative or Markdown.
+async function promptBuilder(ai, model, rawGoals, avgTimes = {}) {
+  const prompt = `
+You're a productivity assistant. A user gave you a list of free-form goals. 
+Your task is to convert them into structured tasks with:
+1. A task name
+2. Estimated duration in minutes (use provided average times when possible)
+3. Task priority (high, medium, low)
+4. Preferred window if applicable (e.g., 09:00)
 
-Inputs:
-- Goals: ${goals.join('; ')}
-- Exceptions: ${exList}
-- Durations (min): ${JSON.stringify(durations)}
+Return a JSON array of objects with keys: task, duration, priority, preferredWindow.
+Do NOT include any extra explanation.
 
-Rules:
-1. Use exactly those durations.
-2. List tasks chronologically, with no overlaps.
-3. Place each exception at its exact time.
-4. A work task that overlaps an exception may be split into **at most two** parts:
-   • Part 1 before the exception, named "<task> (part 1)".  
-   • Part 2 after the exception, named "<task> (part 2)".  
-5. Don’t split tasks for any other reason—only around exceptions.
-6. After any continuous work >40 min, insert a 5 min “Break”.
-7. After each work or part, insert a catch‑up named "<task> (if needed)" same duration.
-   
-Example output:
+User's average task durations:
+${JSON.stringify(avgTimes)}
+
+User's goals:
+"""
+${rawGoals}
+"""
+
+Example:
 [
-  { "task":"Review PRs (part 1)","time":"10:00","duration":30 },
-  { "task":"Lunch with client","time":"12:30","duration":60 },
-  { "task":"Review PRs (part 2)","time":"13:30","duration":30 },
-  …
+  {
+    "task": "Study Java",
+    "duration": 60,
+    "priority": "high",
+    "preferredWindow": "09:00"
+  }
 ]
 `;
-};
+
+  const res = await ai.models.generateContent({
+    model,
+    contents: prompt,
+    temperature: 0.4,
+    maxOutputTokens: 300
+  });
+
+  const json = stripFences(res.text);
+  return JSON.parse(json);
+}
+
+module.exports = { buildPrompt: promptBuilder };
