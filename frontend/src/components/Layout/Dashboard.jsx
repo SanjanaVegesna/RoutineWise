@@ -318,11 +318,11 @@ import {
   doc,
   updateDoc,
   addDoc,
-  getDoc  // Added this import
+  getDoc
 } from "firebase/firestore";
 
 import { getUserPlan, getPlanVariants } from "../../services/firestoreService";
-import PlanTask from "./PlanTask"; // Import the new planTask component
+import PlanTask from "./PlanTask";
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -333,7 +333,7 @@ function Dashboard() {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [showVariants, setShowVariants] = useState(false);
   const [isNewUser, setIsNewUser] = useState(true);
-  const [showplanTask, setShowplanTask] = useState(false);
+  const [showPlanTask, setShowPlanTask] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -358,7 +358,7 @@ function Dashboard() {
     const planData = await getUserPlan(userId, dateKey);
     const fallbackVariants = await getPlanVariants(userId, dateKey);
   
-    setVariants(fallbackVariants); // ✅ Always store fallback variants
+    setVariants(fallbackVariants); // Always store fallback variants
   
     if (Array.isArray(planData?.plan) && planData.plan.length > 0) {
       setSelectedVariant(planData.selectedVariant || null);
@@ -371,14 +371,16 @@ function Dashboard() {
           completed: false,
         }))
       );
-      setShowVariants(false); // ✅ No need to show variants initially
+      // Only hide variants if we're not explicitly showing them
+      if (!showVariants) {
+        setShowVariants(false);
+      }
     } else {
       setAnalytics([]); // No plan available yet
-      setShowVariants(true); // ✅ Show PlanVariants selector by default
+      setShowVariants(true); // Show PlanVariants selector by default
     }
   };
   
-
   const fetchCompletions = async (userId) => {
     const snapshot = await getDocs(collection(db, "completions", userId, "entries"));
     const data = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
@@ -468,6 +470,7 @@ function Dashboard() {
   };
 
   const handleVariantSelected = async () => {
+    setShowVariants(false); // Hide variants after selection
     const userId = auth.currentUser?.uid;
     if (userId) {
       await loadPlan(userId);
@@ -485,8 +488,6 @@ function Dashboard() {
     const interval = setInterval(checkTime, 60000);
     return () => clearInterval(interval);
   }, [showNightPrompt]);
-
-  
 
   const totalTasks = analytics.length;
   const completedTasks = analytics.filter((task) => task.completed).length;
@@ -514,19 +515,19 @@ function Dashboard() {
     );
   }
 
-  const handlePlanCreated = async (plan) => {
+  const handlePlanCreated = async () => {
     const userId = auth.currentUser?.uid;
     if (!userId) return;
     
     // Mark user as not new
     setIsNewUser(false);
+    setShowPlanTask(false);
     
     // Refresh the plan data
     await loadPlan(userId);
     await fetchCompletions(userId);
   };
   
-
   return (
     <MainWrapper>
       {/* Only show confetti if user has tasks and all are completed */}
@@ -544,7 +545,7 @@ function Dashboard() {
             <h2 className="text-2xl font-bold mb-4">👋 Welcome to RoutineWise!</h2>
             <p className="text-lg mb-6">Hi there! What's your plan for today? Let's break it down together and make your day more productive.</p>
             <button
-              onClick={() => setShowplanTask(true)}
+              onClick={() => setShowPlanTask(true)}
               className="px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-md text-lg font-medium"
             >
               ✏️ Make Your First Plan
@@ -552,7 +553,7 @@ function Dashboard() {
           </motion.div>
         )}
 
-        {/* Keep your existing Task Summary section */}
+        {/* Task Summary section */}
         <motion.div
           className="bg-gradient-to-r from-indigo-100 via-purple-100 to-pink-100 rounded-2xl shadow-lg p-6"
           initial={{ opacity: 0, y: -20 }}
@@ -575,79 +576,92 @@ function Dashboard() {
               <p className="text-gray-600 font-medium">Pending</p>
               <p className="text-2xl font-bold text-red-500">{pendingTasks}</p>
             </div>
-            {selectedVariant && (
-              <div className="text-sm text-blue-500 mt-2 font-medium">
-                🧠 Current Plan: <span className="underline">{selectedVariant}</span>
-              </div>
-            )}
           </div>
+          {selectedVariant && (
+            <div className="text-sm text-blue-500 mt-2 font-medium text-center">
+              🧠 Current Plan: <span className="underline">{selectedVariant}</span>
+            </div>
+          )}
         </motion.div>
 
-        {/* Only show Plan Variants if user has plans */}
-        {!isNewUser && variants.length > 0 && (
-          <PlanVariants
-            variants={variants}
-            onVariantSelected={async () => {
-              const userId = auth.currentUser?.uid;
-              setShowVariants(false);
-              await loadPlan(userId);
-              await fetchCompletions(userId);
-              setVariants([]);
-            }}
-          />
-        )}
-
-        {/* Keep your existing task list section */}
-        {analytics.length > 0 && (
+        {/* Conditional rendering - Show either PlanVariants or Task List */}
+        {showVariants ? (
+          // Show PlanVariants when showVariants is true
           <motion.div
-            className="bg-white rounded-2xl shadow-lg p-6 h-[55vh] overflow-y-auto border-t-4 border-indigo-200"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
           >
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-xl font-bold">📌 Upcoming Task:</h2>
-              {upcomingTask && (
-                <div className="flex gap-2 text-sm text-blue-600 font-medium">
-                  <span>{upcomingTask.title}</span>
-                  <span className="text-gray-400">|</span>
-                  <span>{upcomingTask.time}</span>
-                </div>
-              )}
-            </div>
-
-            {analytics.map((task) => (
-              <motion.div
-                key={task.id}
-                whileHover={{ scale: 1.01 }}
-                className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${
-                  task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <button
-                    className="px-3 py-1 rounded bg-blue-100 text-blue-600 text-xs"
-                    onClick={() => handleStart(task)}
-                  >
-                    {task.started ? "Undo Start" : "Start"}
-                  </button>
-                  <input
-                    type="checkbox"
-                    className="w-5 h-5"
-                    checked={task.completed}
-                    onChange={() => handleToggle(task.id)}
-                    disabled={!task.started}
-                  />
-                  <span className="font-medium">{task.title}</span>
-                </div>
-                <span className="text-sm text-gray-500 font-medium">{task.time}</span>
-              </motion.div>
-            ))}
+            {variants.length > 0 ? (
+              <PlanVariants
+                variants={variants}
+                onVariantSelected={handleVariantSelected}
+              />
+            ) : (
+              <div className="text-center p-6 bg-white rounded-2xl shadow-lg">
+                <p className="text-lg text-gray-600 mb-4">No plan variants available for today.</p>
+                <button
+                  onClick={() => setShowPlanTask(true)}
+                  className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
+                >
+                  ✏️ Create New Plan
+                </button>
+              </div>
+            )}
           </motion.div>
+        ) : (
+          // Show Task List when showVariants is false
+          analytics.length > 0 && (
+            <motion.div
+              className="bg-white rounded-2xl shadow-lg p-6 h-[55vh] overflow-y-auto border-t-4 border-indigo-200"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+            >
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="text-xl font-bold">📌 Upcoming Task:</h2>
+                {upcomingTask && (
+                  <div className="flex gap-2 text-sm text-blue-600 font-medium">
+                    <span>{upcomingTask.title}</span>
+                    <span className="text-gray-400">|</span>
+                    <span>{upcomingTask.time}</span>
+                  </div>
+                )}
+              </div>
+
+              {analytics.map((task) => (
+                <motion.div
+                  key={task.id}
+                  whileHover={{ scale: 1.01 }}
+                  className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${
+                    task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="px-3 py-1 rounded bg-blue-100 text-blue-600 text-xs"
+                      onClick={() => handleStart(task)}
+                    >
+                      {task.started ? "Undo Start" : "Start"}
+                    </button>
+                    <input
+                      type="checkbox"
+                      className="w-5 h-5"
+                      checked={task.completed}
+                      onChange={() => handleToggle(task.id)}
+                      disabled={!task.started}
+                    />
+                    <span className="font-medium">{task.title}</span>
+                  </div>
+                  <span className="text-sm text-gray-500 font-medium">{task.time}</span>
+                </motion.div>
+              ))}
+            </motion.div>
+          )
         )}
 
-        {/* Only show Change Plan button if user has variants */}
-        {!isNewUser && variants.length > 0 && (
+        {/* Action buttons - Only show when not displaying variants */}
+        {!showVariants && !isNewUser && (
           <div className="text-center mt-6">
             <button
               onClick={() => setShowVariants(true)}
@@ -657,7 +671,7 @@ function Dashboard() {
             </button>
             
             <button
-              onClick={() => setShowplanTask(true)}
+              onClick={() => setShowPlanTask(true)}
               className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
             >
               ✏️ Create New Plan
@@ -665,19 +679,7 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Create New Plan button for users with no plan variants */}
-        {!isNewUser && variants.length === 0 && (
-          <div className="text-center mt-6">
-            <button
-              onClick={() => setShowplanTask(true)}
-              className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
-            >
-              ✏️ Create New Plan
-            </button>
-          </div>
-        )}
-
-        {/* Keep your existing night prompt */}
+        {/* Night prompt */}
         {showNightPrompt && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -687,14 +689,14 @@ function Dashboard() {
             🌙 It's almost the end of the day!{" "}
             <button
               className="underline font-semibold hover:text-yellow-900"
-              onClick={() => setShowplanTask(true)}
+              onClick={() => setShowPlanTask(true)}
             >
               Plan for tomorrow
             </button>
           </motion.div>
         )}
 
-        {/* Only show Weekly Achievement if user is not new */}
+        {/* Achievement section - Only show if user is not new */}
         {!isNewUser && (
           <motion.div
             className="bg-white rounded-2xl shadow-md p-5 border-l-4 border-blue-200"
@@ -709,10 +711,10 @@ function Dashboard() {
           </motion.div>
         )}
         
-        {/* Add the PlanTask component */}
+        {/* PlanTask modal */}
         <PlanTask 
-          isOpen={showplanTask} 
-          onClose={() => setShowplanTask(false)}
+          isOpen={showPlanTask} 
+          onClose={() => setShowPlanTask(false)}
           onPlanCreated={handlePlanCreated}
         />
       </main>
