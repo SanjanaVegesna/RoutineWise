@@ -1,5 +1,5 @@
 /** Strip Markdown fences/backticks */
-export const  stripFences = (text) => {
+const stripFences = (text) => {
   let t = text.trim();
   if (t.startsWith('```')) {
     const parts = t.split('```');
@@ -10,3 +10,5 @@ export const  stripFences = (text) => {
   }
   return t.replace(/(^`+|`+$)/g, '').trim();
 }
+
+module.exports = { stripFences };
