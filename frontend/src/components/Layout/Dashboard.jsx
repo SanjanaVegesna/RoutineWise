@@ -128,7 +128,7 @@ function Dashboard() {
         alert("Failed to get calendar access. Please try again.");
         return false;
       }
-      
+
       await deleteOldRoutineWiseEvents(accessToken);
       for (const task of taskList) {
         if (task.time) await addEventToGoogleCalendar(task, accessToken);
@@ -254,14 +254,57 @@ function Dashboard() {
     return () => unsubscribe();
   }, []);
 
+  function getVariantDisplayInfo(variant) {
+    switch (variant.name) {
+      case 'variant1_front_loaded':
+        return {
+          displayName: 'Morning Momentum',
+          description: 'Start your day early, completing most tasks upfront.'
+        };
+
+      case 'variant2_focus_window':
+        return {
+          displayName: 'Focused Sessions',
+          description: 'Optimize productivity with structured focus periods.'
+        };
+
+      case 'variant3_even_spread':
+        return {
+          displayName: 'Balanced Day',
+          description: 'Distribute tasks evenly throughout the day to avoid overload.'
+        };
+
+      case 'variant4_minimal_breaks':
+        return {
+          displayName: 'Compact Efficiency',
+          description: 'Minimal breaks to maximize productive working hours.'
+        };
+
+      default:
+        return {
+          displayName: 'Custom Plan',
+          description: 'A tailored approach to your day.'
+        };
+    }
+  }
+
+  // Usage example
+
   const loadPlan = async (userId) => {
     const dateKey = new Date().toISOString().split("T")[0];
     const planData = await getUserPlan(userId, dateKey);
     const fallbackVariants = await getPlanVariants(userId, dateKey);
-    setVariants(fallbackVariants);
+    const displayVariants = fallbackVariants.map(variant => ({
+      ...variant,
+      ...getVariantDisplayInfo(variant)
+    }));
+    console.log(displayVariants)
+    setVariants(displayVariants);
 
     if (Array.isArray(planData?.plan) && planData.plan.length > 0) {
-      setSelectedVariant(planData.selectedVariant || null);
+      const variantSet = getVariantDisplayInfo({ ...planData, name: planData.selectedVariant })
+
+      setSelectedVariant(variantSet.displayName || null);
       const updatedTasks = planData.plan.map((task, i) => ({
         id: i + 1,
         title: task.task,
@@ -302,7 +345,7 @@ function Dashboard() {
     <MainWrapper>
       {/* Only show confetti if user has tasks and all are completed */}
       {!isNewUser && allCompleted && <Confetti recycle={false} numberOfPieces={400} />}
-      
+
       <main className="p-4 sm:p-6 md:p-8 space-y-8 max-w-6xl mx-auto text-gray-800">
         {/* Welcome message for new users */}
         {isNewUser && analytics.length === 0 && (
@@ -403,9 +446,8 @@ function Dashboard() {
                 <motion.div
                   key={task.id}
                   whileHover={{ scale: 1.01 }}
-                  className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${
-                    task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
-                  }`}
+                  className={`flex justify-between items-center p-4 mb-3 rounded-xl border shadow transition ${task.completed ? "bg-green-100" : "bg-gray-50 hover:bg-gray-100"
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <button
@@ -439,19 +481,18 @@ function Dashboard() {
             >
               🔁 Change Plan
             </button>
-            
+
             <button
               onClick={() => setShowPlanTask(true)}
               className="px-6 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white shadow-md"
             >
               ✏️ Create New Plan
             </button>
-            
+
             <button
               onClick={handleCalendarSync}
-              className={`px-6 py-2 rounded-lg ${
-                calendarSynced ? "bg-purple-500 hover:bg-purple-600" : "bg-blue-500 hover:bg-blue-600"
-              } text-white shadow-md`}
+              className={`px-6 py-2 rounded-lg ${calendarSynced ? "bg-purple-500 hover:bg-purple-600" : "bg-blue-500 hover:bg-blue-600"
+                } text-white shadow-md`}
             >
               {calendarSynced ? "🔄 " : "📅 "}{calendarButtonText}
             </button>
@@ -494,10 +535,10 @@ function Dashboard() {
             )}
           </motion.div>
         )}
-        
+
         {/* PlanTask modal */}
-        <PlanTask 
-          isOpen={showPlanTask} 
+        <PlanTask
+          isOpen={showPlanTask}
           onClose={() => setShowPlanTask(false)}
           onPlanCreated={handlePlanCreated}
         />

@@ -175,8 +175,8 @@ const PlanVariants = ({ variants, onVariantSelected }) => {
         >
           <div className="flex justify-between items-center mb-2">
             <div>
-              <p className="font-semibold text-blue-700">{variant.strategy}</p>
-              <p className="text-xs text-gray-500">{variant.name}</p>
+              <p className="font-semibold text-blue-700">{variant.displayName}</p>
+              <p className="text-xs text-gray-500">{variant.description}</p>
             </div>
             <div className="flex gap-2">
               <button
