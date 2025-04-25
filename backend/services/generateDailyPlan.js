@@ -1,3 +1,5 @@
+ 
+// Updated generateDailyPlan.js
 const { GoogleGenAI } = require('@google/genai');
 const { parseGoals } = require('./parseGoals');
 const { buildPrompt } = require('./promptBuilder');

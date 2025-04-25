@@ -1,4 +1,4 @@
-// backend/services/parseGoals.js
+// 📁 backend/services/parseGoals.js
 const { stripFences } = require("../utils");
  
 async function parseGoals(ai, model, text) {
@@ -46,5 +46,3 @@ User message:
 }
  
 module.exports = { parseGoals };
- 
-parseGoals.js
