@@ -1,306 +1,137 @@
-
-// const { GoogleGenAI } = require('@google/genai');
-// const { parseFreeformGoals } = require('./parseGoals');
-// const { estimateDurations } = require('./estimateDurations');
-// const { rankTasksByAI } = require('./rankTasks');
-// const { scheduleDay } = require('./scheduler');
-
-
-// async function generateDailyPlan(req, res, db, apiKey, model) {
-//   const ai = new GoogleGenAI({ apiKey }); // ✅ use injected secret
-//   try {
-//     if (req.method !== 'POST') {
-//       return res.status(405).send('Method Not Allowed');
-//     }
-
-//     const { userId, goals: rawGoals, checkin = null } = req.body;
-//     if (!userId || !rawGoals) {
-//       return res.status(400).json({ error: 'Missing userId or goals' });
-//     }
-
-//     // Step A: Fetch user profile and sanitize
-//     const profileSnap = await db.collection('profileData').doc(userId).get();
-//     let profileData = profileSnap.exists ? profileSnap.data() : {};
-
-//     if (typeof profileData !== 'object') profileData = {};
-
-
-//     const avgTimes = profileData.avg_task_times || {};
-//     const bestFocusTimes = Array.isArray(profileData.best_focus_times)
-//       ? profileData.best_focus_times.filter(t => typeof t === 'string' && t.trim())
-//       : [];
-
-//     // Step B: Parse freeform goals
-//     let goals = Array.isArray(rawGoals)
-//       ? rawGoals
-//       : await parseFreeformGoals(ai, model, rawGoals);
-
-    
-
-//     const durations = {};
-//     goals.forEach((g) => {
-//       if (avgTimes[g] != null) {
-//         durations[g] = avgTimes[g];
-//       }
-//     });
-
-//     const missing = goals.filter((g) => durations[g] == null);
-
-//     if (missing.length > 0) {
-//       const est = await estimateDurations(ai, model, missing, avgTimes);
-//       missing.forEach((g) => {
-//         durations[g] = est[g] || 30;
-//       });
-//     }
-
-
-//     const rankedNames = await rankTasksByAI(ai, model, goals);
-
-
-//     const annotatedGoals = rankedNames.map(name => ({
-//       name,
-//       duration: durations[name] || 30
-//     }));
-
-
-//     const dateKey = new Date().toISOString().split('T')[0];
-//     const planCollection = db.collection('plans').doc(userId).collection(dateKey);
-
-//     // IF CHECKIN PROVIDED → SINGLE PRIORITIZED PLAN
-//     if (checkin) {
-//       const exceptions = (checkin.exceptions || []).map(ex => {
-//         if (typeof ex === 'object' && ex.name && ex.start && ex.duration) {
-//           return ex;
-//         }
-//         const [name, , time] = ex.split(' ');
-//         return { name: name.trim(), start: time.trim(), duration: 60 };
-//       });
-
-//       const plan = scheduleDay({
-//         goals: annotatedGoals,
-//         exceptions,
-//         startOfDay: checkin.startOfDay || '09:00',
-//         focusWindows: bestFocusTimes || []
-//       });
-
-
-//       await planCollection.doc('plan').set({
-//         createdAt: new Date().toISOString(),
-//         source: 'prioritized',
-//         plan
-//       });
-
-//       return res.json({ plan, variants: null });
-//     }
-
-//     // NO CHECKIN → GENERATE 3–4 PLAN VARIANTS
-//     const fallbackPlans = {
-//       variant1_front_loaded: {
-//         strategy: 'Front-loaded',
-//         startOfDay: '08:00'
-//       },
-//       variant2_focus_window: {
-//         strategy: 'Focus-window heavy',
-//         startOfDay: '09:00',
-//         focusWindows: ['09:00', '14:00']
-//       },
-//       variant3_even_spread: {
-//         strategy: 'Even distribution',
-//         startOfDay: '10:00'
-//       },
-//       variant4_minimal_breaks: {
-//         strategy: 'Minimal breaks',
-//         startOfDay: '08:30'
-//       }
-//     };
-
-//     const batch = db.batch();
-//     const variantsToReturn = [];
-
-//     for (const [variantName, config] of Object.entries(fallbackPlans)) {
-//       const variantPlan = scheduleDay({
-//         goals: annotatedGoals,
-//         startOfDay: config.startOfDay,
-//         focusWindows: config.focusWindows || []
-//       });
-
-//       const variantsCollection = planCollection.doc('plan').collection('variants');
-//       const docRef = variantsCollection.doc(variantName);
-
-//       batch.set(docRef, {
-//         createdAt: new Date().toISOString(),
-//         strategy: config.strategy,
-//         startOfDay: config.startOfDay,
-//         focusWindows: config.focusWindows || [],
-//         plan: variantPlan
-//       });
-
-//       variantsToReturn.push({
-//         name: variantName,
-//         strategy: config.strategy,
-//         plan: variantPlan
-//       });
-//     }
-
-//     await batch.commit();
-//     return res.json({
-//       plan: null,
-//       variants: variantsToReturn,
-//       usedProfile: {
-//         avg_task_times: Object.keys(avgTimes).length > 0,
-//         focus_windows: bestFocusTimes.length > 0
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error(err);
-//     return res.status(500).json({ error: err.message });
-//   }
-// };
-
-// module.exports = { generateDailyPlan }
-
 const { GoogleGenAI } = require('@google/genai');
-const { parseFreeformGoals } = require('./parseGoals');
+const { parseGoals } = require('./parseGoals');
 const { buildPrompt } = require('./promptBuilder');
 const { rankTasksByAI } = require('./rankTasks');
-const { scheduleDay } = require('./scheduler');
-
+const { stripFences } = require('../utils');
+ 
 async function generateDailyPlan(req, res, db, apiKey, model) {
-  const ai = new GoogleGenAI({ apiKey }); // ✅ use injected secret
-  try {
-    if (req.method !== 'POST') {
-      return res.status(405).send('Method Not Allowed');
-    }
-
-    const { userId, goals: rawGoals, checkin = null } = req.body;
-    if (!userId || !rawGoals) {
-      return res.status(400).json({ error: 'Missing userId or goals' });
-    }
-
-    // Step A: Fetch user profile and sanitize
-    const profileSnap = await db.collection('profileData').doc(userId).get();
-    let profileData = profileSnap.exists ? profileSnap.data() : {};
-    if (typeof profileData !== 'object') profileData = {};
-
-
-    const avgTimes = profileData.avg_task_times || {};
-    const bestFocusTimes = Array.isArray(profileData.best_focus_times)
-      ? profileData.best_focus_times.filter(t => typeof t === 'string' && t.trim())
-      : [];
-
-    console.log(avgTimes, bestFocusTimes, 'from ramya')
-
-    // Step B: Parse goals
-    let goals = Array.isArray(rawGoals)
-      ? rawGoals
-      : await parseFreeformGoals(ai, model, rawGoals);
-
-    // Step C: Hybrid duration builder using profileData + AI
-    const durations = await buildPrompt(ai, model, goals, avgTimes);
-
-    // Step D: Rank tasks using AI
-    const rankedNames = await rankTasksByAI(ai, model, goals);
-
-    // Step E: Annotate ranked tasks
-    const annotatedGoals = rankedNames.map(name => ({
-      name,
-      duration: durations[name] || 30
-    }));
-
-    const dateKey = new Date().toISOString().split('T')[0];
-    const planCollection = db.collection('plans').doc(userId).collection(dateKey);
-
-    // Step F: Check-in path (one fixed plan)
-    if (checkin) {
-      const exceptions = (checkin.exceptions || []).map(ex => {
-        if (typeof ex === 'object' && ex.name && ex.start && ex.duration) {
-          return ex;
+    const ai = new GoogleGenAI({ apiKey });
+ 
+    try {
+        if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+ 
+        const { userId, goals: rawGoals, checkin = {} } = req.body;
+        if (!userId || !rawGoals) return res.status(400).json({ error: 'Missing userId or goals' });
+ 
+        const profileSnap = await db.collection('profileData').doc(userId).get();
+        const profileData = profileSnap.exists ? profileSnap.data() : {};
+        const avgTimes = profileData.avg_task_times || {};
+        const bestFocusTimes = Array.isArray(profileData.best_focus_times) ?
+            profileData.best_focus_times.filter(t => typeof t === 'string' && t.trim()) : [];
+ 
+        const parsed = await parseGoals(ai, model, rawGoals);
+        const goals = parsed.goals || [];
+        const exceptions = parsed.exceptions || [];
+ 
+        const rankedTasks = await rankTasksByAI(ai, model, goals);
+        const rankedNames = rankedTasks.map(t => t.task);
+        const durations = Object.fromEntries(rankedTasks.map(t => [t.task, t.duration]));
+ 
+        const dateKey = new Date().toISOString().split('T')[0];
+        const planCollection = db.collection('plans').doc(userId).collection(dateKey);
+ 
+        // === CHECKIN PATH ===
+        if (checkin && checkin.startOfDay) {
+            const prompt = buildPrompt({ goals: rankedNames, durations, checkin: {...checkin, exceptions }, profileData });
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                temperature: 0.4,
+                maxOutputTokens: 1024
+            });
+ 
+            const plan = JSON.parse(stripFences(response.text));
+            await planCollection.doc('plan').set({
+                createdAt: new Date().toISOString(),
+                source: 'gemini-checkin',
+                selectedVariant: 'gemini-checkin',
+                plan
+            });
+ 
+            return res.json({
+                plan,
+                variants: [],
+                usedProfile: {
+                    avg_task_times: Object.keys(avgTimes).length > 0,
+                    focus_windows: bestFocusTimes.length > 0
+                }
+            });
         }
-        const [name, , time] = ex.split(' ');
-        return { name: name.trim(), start: time.trim(), duration: 60 };
-      });
-
-      const plan = scheduleDay({
-        goals: annotatedGoals,
-        exceptions,
-        startOfDay: checkin.startOfDay || '09:00',
-        focusWindows: bestFocusTimes || []
-      });
-
-      await planCollection.doc('plan').set({
-        createdAt: new Date().toISOString(),
-        source: 'prioritized',
-        plan
-      });
-
-      return res.json({ plan, variants: null });
+ 
+        // === FALLBACK VARIANTS PATH ===
+        const fallbackVariants = {
+            variant1_front_loaded: { strategy: 'Front-loaded', startOfDay: '08:00' },
+            variant2_focus_window: { strategy: 'Focus-window heavy', startOfDay: '09:00', focusWindows: ['09:00', '14:00'] },
+            variant3_even_spread: { strategy: 'Even distribution', startOfDay: '10:00' },
+            variant4_minimal_breaks: { strategy: 'Minimal breaks', startOfDay: '08:30' }
+        };
+ 
+        const batch = db.batch();
+        const variantsToReturn = [];
+ 
+        for (const [variantName, config] of Object.entries(fallbackVariants)) {
+            const prompt = buildPrompt({
+                goals: rankedNames,
+                durations,
+                checkin: {
+                    startOfDay: config.startOfDay,
+                    exceptions,
+                    focusWindows: config.focusWindows || []
+                },
+                profileData,
+                strategy: config.strategy
+            });
+ 
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                temperature: 0.5,
+                maxOutputTokens: 1024
+            });
+ 
+            const plan = JSON.parse(stripFences(response.text));
+            const variantsCollection = planCollection.doc('plan').collection('variants');
+            const docRef = variantsCollection.doc(variantName);
+ 
+            batch.set(docRef, {
+                createdAt: new Date().toISOString(),
+                strategy: config.strategy,
+                startOfDay: config.startOfDay,
+                focusWindows: config.focusWindows || [],
+                plan
+            });
+ 
+            variantsToReturn.push({ name: variantName, strategy: config.strategy, plan });
+        }
+ 
+        // Store selectedVariant (default: first variant)
+        // Store selectedVariant (default: first variant)
+        // Store selectedVariant (default: first variant safely)
+        const firstVariant = variantsToReturn.length > 0 ? variantsToReturn[0] : null;
+ 
+        batch.set(planCollection.doc('plan'), {
+            createdAt: new Date().toISOString(),
+            source: 'fallback-variants',
+            selectedVariant: firstVariant ? firstVariant.name : '',
+            plan: firstVariant ? firstVariant.plan : []
+        });
+ 
+ 
+ 
+        await batch.commit();
+ 
+        return res.json({
+            plan: null,
+            variants: variantsToReturn,
+            usedProfile: {
+                avg_task_times: Object.keys(avgTimes).length > 0,
+                focus_windows: bestFocusTimes.length > 0
+            }
+        });
+    } catch (err) {
+        console.error('Error in generateDailyPlan:', err);
+        return res.status(500).json({ error: err.message });
     }
-
-    // Step G: Generate fallback variants
-    const fallbackPlans = {
-      variant1_front_loaded: {
-        strategy: 'Front-loaded',
-        startOfDay: '08:00'
-      },
-      variant2_focus_window: {
-        strategy: 'Focus-window heavy',
-        startOfDay: '09:00',
-        focusWindows: ['09:00', '14:00']
-      },
-      variant3_even_spread: {
-        strategy: 'Even distribution',
-        startOfDay: '10:00'
-      },
-      variant4_minimal_breaks: {
-        strategy: 'Minimal breaks',
-        startOfDay: '08:30'
-      }
-    };
-
-    const batch = db.batch();
-    const variantsToReturn = [];
-
-    for (const [variantName, config] of Object.entries(fallbackPlans)) {
-      const variantPlan = scheduleDay({
-        goals: annotatedGoals,
-        startOfDay: config.startOfDay,
-        focusWindows: config.focusWindows || []
-      });
-
-      const variantsCollection = planCollection.doc('plan').collection('variants');
-      const docRef = variantsCollection.doc(variantName);
-
-      batch.set(docRef, {
-        createdAt: new Date().toISOString(),
-        strategy: config.strategy,
-        startOfDay: config.startOfDay,
-        focusWindows: config.focusWindows || [],
-        plan: variantPlan
-      });
-
-      variantsToReturn.push({
-        name: variantName,
-        strategy: config.strategy,
-        plan: variantPlan
-      });
-    }
-
-    await batch.commit();
-    return res.json({
-      plan: null,
-      variants: variantsToReturn,
-      usedProfile: {
-        avg_task_times: Object.keys(avgTimes).length > 0,
-        focus_windows: bestFocusTimes.length > 0
-      }
-    });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
-  }
 }
-
+ 
 module.exports = { generateDailyPlan };
-
