@@ -6,14 +6,13 @@ import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import MainWrapper from "../../context/MainWrapper";
 
-
 const SuccessAlert = () => (
-    <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
-      <strong className="font-bold">Success! </strong>
-      <span className="block sm:inline">Your profile has been updated.</span>
-    </div>
-  );
-  
+  <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+    <strong className="font-bold">Success! </strong>
+    <span className="block sm:inline">Your profile has been updated.</span>
+  </div>
+);
+
 const Profile = () => {
   const { toggleDarkMode, darkMode } = useDarkMode();
   const navigate = useNavigate();
@@ -44,8 +43,9 @@ const Profile = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false); // New state to track image upload status
-  
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
   // Fetch user data from Firestore
   useEffect(() => {
     const fetchUserData = async () => {
@@ -54,25 +54,17 @@ const Profile = () => {
         return;
       }
       
-      console.log("Fetching user data for:", user.uid);
       try {
         const userDocRef = doc(db, "users", user.uid);
         const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists()) {
-          console.log("User document exists, loading data");
           const userData = userDoc.data();
           const preferredNameValue = userData.preferredName || "";
           const displayNameValue = user.displayName || "N/A";
           
           // Prioritize the photoURL from Firestore over the one from auth
           const storedPhotoURL = userData.photoURL || user.photoURL || "";
-          
-          console.log("User data loaded:", { 
-            preferredName: preferredNameValue,
-            displayName: displayNameValue,
-            photoURL: storedPhotoURL
-          });
           
           // Force a fresh image URL by appending a timestamp
           const photoURLWithTimestamp = storedPhotoURL ? 
@@ -100,10 +92,7 @@ const Profile = () => {
             voiceNotifications: userData.voiceNotifications || false,
             webNotifications: userData.webNotifications || false,
           });
-          
-          console.log("Loaded profile image URL:", photoURLWithTimestamp);
         } else {
-          console.log("User document doesn't exist, creating new one");
           // Create a new user document if it doesn't exist
           const initialData = {
             displayName: user.displayName || "",
@@ -117,7 +106,6 @@ const Profile = () => {
           };
           
           await setDoc(userDocRef, initialData);
-          console.log("Created new user document");
           
           // Set the profile with initial data
           setProfile({
@@ -164,6 +152,7 @@ const Profile = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setImageError(false);
       setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -177,56 +166,34 @@ const Profile = () => {
   const handleImageUpload = async () => {
     if (!user || !imageFile) return;
     
-    console.log("Starting image upload process...");
-    // Set loading state
     setIsUploadingImage(true);
     
     try {
       const storage = getStorage();
-      const storageRef = ref(storage, `profile_images/${user.uid}_${Date.now()}`); // Add timestamp to avoid caching
+      const storageRef = ref(storage, `profile_images/${user.uid}_${Date.now()}`);
     
-      console.log("Uploading to Firebase Storage...");
-      // Upload the image to Firebase Storage
       const uploadResult = await uploadBytes(storageRef, imageFile);
-      console.log("Upload successful:", uploadResult);
-      
-      console.log("Getting download URL...");
-      // Get the download URL
       const uploadedPhotoURL = await getDownloadURL(storageRef);
-      console.log("Image uploaded successfully, URL:", uploadedPhotoURL);
       
-      console.log("Updating Firestore...");
-      // Update Firestore with new image URL
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, {
         photoURL: uploadedPhotoURL,
       });
-      console.log("Firestore updated successfully");
       
-      // Update local state
       setProfile(prev => ({
         ...prev,
         photoURL: uploadedPhotoURL,
       }));
       
-      // Clear the temporary file data
       setImageFile(null);
-      
-      // Keep image preview in sync with the uploaded image
-      // This ensures the UI shows the uploaded image immediately
       setImagePreview(uploadedPhotoURL);
-      
-      // Show success message
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Error uploading image:", error);
+      setImageError(true);
       alert(`Error uploading image: ${error.message}`);
-      // Reset the image preview on error
-      setImagePreview(profile.photoURL);
     } finally {
-      console.log("Upload process finished, resetting loading state");
-      // Reset loading state
       setIsUploadingImage(false);
     }
   };
@@ -234,19 +201,14 @@ const Profile = () => {
   // Effect to trigger image upload when imageFile changes
   useEffect(() => {
     if (imageFile && !isUploadingImage) {
-      console.log("Image file changed, triggering upload");
       handleImageUpload();
     }
   }, [imageFile]);
 
   // Effect to refresh the profile image when photoURL changes
-  // This ensures the image stays consistent across tab switches
   useEffect(() => {
     if (profile.photoURL) {
-      console.log("Profile photoURL changed, updating preview");
-      // Add a timestamp or cache-busting parameter to force a fresh load
-      const timestamp = new Date().getTime();
-      setImagePreview(`${profile.photoURL}?t=${timestamp}`);
+      setImagePreview(`${profile.photoURL}?t=${new Date().getTime()}`);
     }
   }, [profile.photoURL]);
   
@@ -257,7 +219,6 @@ const Profile = () => {
     try {
       const userDocRef = doc(db, "users", user.uid);
       
-      // Update Firestore
       await updateDoc(userDocRef, {
         displayName: profile.displayName,
         preferredName: profile.preferredName,
@@ -265,11 +226,9 @@ const Profile = () => {
         dateOfBirth: profile.dateOfBirth,
         voiceNotifications: settings.voiceNotifications,
         webNotifications: settings.webNotifications,
-        // Ensure photoURL is also saved here to maintain consistency
         photoURL: profile.photoURL,
       });
       
-      // Only now update local state
       setProfile(prev => ({
         ...prev,
         displayName: profile.displayName,
@@ -278,7 +237,6 @@ const Profile = () => {
         dateOfBirth: profile.dateOfBirth,
       }));
       
-      // Update the displayed name only after successful save
       setDisplayedName(profile.preferredName || profile.displayName);
       
       setIsEditing(false);
@@ -290,7 +248,7 @@ const Profile = () => {
     }
   };
 
-  // Loading state enhancements
+  // Loading state
   if (isLoading) {
     return (
       <MainWrapper>
@@ -314,20 +272,14 @@ const Profile = () => {
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                   <span className="ml-2 text-sm text-gray-600 dark:text-gray-300">Uploading...</span>
                 </div>
+              ) : imageError ? (
+                <span className="text-4xl text-gray-400">👤</span>
               ) : (imagePreview || profile.photoURL) ? (
                 <img 
                   src={imagePreview || profile.photoURL} 
                   alt="Profile" 
                   className="w-full h-full object-cover"
-                  // Add key with timestamp to force re-render when image changes
-                  key={`profile-img-${new Date().getTime()}`}
-                  onError={(e) => {
-                    console.error("Image failed to load");
-                    e.target.onerror = null;
-                    e.target.src = ''; // Clear the src to show fallback
-                    // Show default avatar on error
-                    e.target.parentNode.innerHTML = '<span class="text-4xl text-gray-400">👤</span>';
-                  }}
+                  onError={() => setImageError(true)}
                 />
               ) : (
                 <span className="text-4xl text-gray-400">👤</span>
@@ -348,7 +300,7 @@ const Profile = () => {
               />
             </label>
           </div>
-          <h1 className="text-2xl font-bold">{displayedName}</h1>
+          <h1 className="text-2xl font-bold color" style={{ color: "grey" }}>{displayedName}</h1>
         </div>
 
         {/* User Info */}
@@ -385,7 +337,7 @@ const Profile = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                 Name
+                Name
               </label>
               {isEditing ? (
                 <input
@@ -429,8 +381,6 @@ const Profile = () => {
                 {profile.email}
               </p>
             </div>
-
-           
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
